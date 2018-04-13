@@ -1,6 +1,8 @@
 var AWS = require('aws-sdk');
 var forwardFrom = process.env.from_address;
 var forwardTo = process.env.to_address;
+var forwardNoReply = process.env.noreply_address;
+var rewriteForward = process.env.rewrite_forward;
 exports.handler = function(event, context) {
     var msgInfo = JSON.parse(event.Records[0].Sns.Message);
 
@@ -12,11 +14,19 @@ exports.handler = function(event, context) {
 
     var email = msgInfo.content,
         headers = "From: " + forwardFrom + "\r\n";
-    headers += "Reply-To: " + msgInfo.mail.commonHeaders.from[0] + "\r\n";
-    headers += "X-Original-To: " + msgInfo.mail.commonHeaders.to[0] + "\r\n";
-    headers += "To: " + forwardTo + "\r\n";
-    headers += "Subject: Fwd: " + msgInfo.mail.commonHeaders.subject + "\r\n";
 
+    // If it wasn't sent by the test service, or, we've forced rewrite on, fix the From addr
+    if (msgInfo.mail.commonHeaders.from[0] !== forwardFrom || rewriteForward === "true") {
+        headers += "Reply-To: " + msgInfo.mail.commonHeaders.from[0] + "\r\n";
+        headers += "X-Original-To: " + msgInfo.mail.commonHeaders.to[0] + "\r\n";
+        headers += "To: " + forwardTo + "\r\n";
+        headers += "Subject: Fwd: " + msgInfo.mail.commonHeaders.subject + "\r\n";
+    } else {
+        headers += "Reply-To: " + forwardNoReply + "\r\n";
+        headers += "To: " + msgInfo.mail.commonHeaders.to[0] + "\r\n";
+        headers += "Subject: [screened] " + msgInfo.mail.commonHeaders.subject + "\r\n";
+    }
+    
     if (email) {
         var res;
         res = email.match(/Content-Type:.+\s*boundary.*/);
